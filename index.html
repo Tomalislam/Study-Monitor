@@ -230,6 +230,8 @@ body{
             text-shadow: 0 0 60px var(--accent-glow);
             cursor: default;
             position: relative;
+            /* Prevent layout shifts from rapid updates */
+            contain: layout style;
         }
         .fullscreen-active .stopwatch-display {
             font-size: clamp(5rem, 16vw, 14rem);
@@ -988,7 +990,7 @@ body{
 </head>
 <body>
     <div class="developer-bar">
-    🚀 Designed & Developed with ❤️ by <span>YOUR NAME</span>
+    🚀 Designed & Developed with ❤️ by <span>MD. LAISUL ISLAM TOMAL</span>
 </div>
 
 <!-- Your Website Content -->
@@ -1220,8 +1222,9 @@ body{
             // ──────────────────────────────────────
             let stopwatchRunning = false;
             let stopwatchStartTime = null;
-            let stopwatchElapsed = 0; // in ms
-            let stopwatchInterval = null;
+            let stopwatchElapsed = 0; // Total ms displayed on stopwatch
+            let stopwatchLastSavedElapsed = 0; // How much of elapsed has already been saved to history
+            let stopwatchAnimFrame = null; // requestAnimationFrame ID (replaces setInterval)
             let lapTimes = [];
             let currentTaskFilter = 'all';
             let pomodoroTotalSeconds = 25 * 60;
@@ -1295,7 +1298,7 @@ body{
             applyDarkMode();
 
             // ──────────────────────────────────────
-            // Stopwatch Logic
+            // Stopwatch Logic (FIXED)
             // ──────────────────────────────────────
             function formatTime(ms) {
                 const totalSeconds = Math.floor(ms / 1000);
@@ -1311,37 +1314,66 @@ body{
                 };
             }
 
-            function updateStopwatchDisplay() {
-                const currentMs = stopwatchRunning ?
+            function getCurrentElapsedMs() {
+                return stopwatchRunning ?
                     stopwatchElapsed + (Date.now() - stopwatchStartTime) :
                     stopwatchElapsed;
-                const t = formatTime(currentMs);
+            }
+
+            function updateStopwatchDisplay() {
+                const t = formatTime(getCurrentElapsedMs());
                 swHours.textContent = t.hours;
                 swMinutes.textContent = t.minutes;
                 swSeconds.textContent = t.seconds;
                 swMillis.textContent = '.' + t.millis;
-                return currentMs;
+            }
+
+            // RAF-based animation loop (smooth, no jitter)
+            function stopwatchAnimationLoop() {
+                if (!stopwatchRunning) return;
+                const currentMs = stopwatchElapsed + (Date.now() - stopwatchStartTime);
+                const t = formatTime(currentMs);
+                // Only update DOM elements that actually changed (reduces repaints)
+                if (swHours.textContent !== t.hours) swHours.textContent = t.hours;
+                if (swMinutes.textContent !== t.minutes) swMinutes.textContent = t.minutes;
+                if (swSeconds.textContent !== t.seconds) swSeconds.textContent = t.seconds;
+                if (swMillis.textContent !== '.' + t.millis) swMillis.textContent = '.' + t.millis;
+                stopwatchAnimFrame = requestAnimationFrame(stopwatchAnimationLoop);
+            }
+
+            // Save only the NEW portion that hasn't been saved yet
+            function saveNewStopwatchSession() {
+                const finalElapsed = getCurrentElapsedMs();
+                const unsavedDuration = finalElapsed - stopwatchLastSavedElapsed;
+                if (unsavedDuration > 2000) { // Only save if more than 2 seconds
+                    saveSession(Math.round(unsavedDuration), 'stopwatch');
+                    stopwatchLastSavedElapsed = finalElapsed;
+                }
             }
 
             function startStopwatch() {
                 if (stopwatchRunning) {
-                    // Pause
+                    // ── PAUSE ──
+                    // Freeze elapsed time
                     stopwatchElapsed += Date.now() - stopwatchStartTime;
                     stopwatchRunning = false;
-                    clearInterval(stopwatchInterval);
-                    stopwatchInterval = null;
+                    if (stopwatchAnimFrame) {
+                        cancelAnimationFrame(stopwatchAnimFrame);
+                        stopwatchAnimFrame = null;
+                    }
+                    // Save only the new portion since last save
+                    saveNewStopwatchSession();
+                    updateStopwatchDisplay();
                     btnStartStop.textContent = '▶ Start';
                     btnStartStop.classList.remove('running');
                     btnLap.disabled = true;
                     stopwatchDisplay.classList.remove('running');
                     showToast('⏸ Stopwatch paused');
                 } else {
-                    // Start
+                    // ── START ──
                     stopwatchStartTime = Date.now();
                     stopwatchRunning = true;
-                    stopwatchInterval = setInterval(() => {
-                        updateStopwatchDisplay();
-                    }, 10);
+                    stopwatchAnimFrame = requestAnimationFrame(stopwatchAnimationLoop);
                     btnStartStop.textContent = '⏸ Pause';
                     btnStartStop.classList.add('running');
                     btnLap.disabled = false;
@@ -1351,19 +1383,21 @@ body{
             }
 
             function resetStopwatch() {
-                const wasRunning = stopwatchRunning;
+                // Stop the animation if running
                 if (stopwatchRunning) {
+                    stopwatchElapsed += Date.now() - stopwatchStartTime;
                     stopwatchRunning = false;
-                    clearInterval(stopwatchInterval);
-                    stopwatchInterval = null;
+                    if (stopwatchAnimFrame) {
+                        cancelAnimationFrame(stopwatchAnimFrame);
+                        stopwatchAnimFrame = null;
+                    }
                 }
-                // Save session if there was elapsed time
-                if (stopwatchElapsed > 1000 || (wasRunning && (Date.now() - stopwatchStartTime) > 1000)) {
-                    const finalElapsed = stopwatchElapsed + (wasRunning ? (Date.now() - stopwatchStartTime) : 0);
-                    saveSession(finalElapsed, 'stopwatch');
-                }
+                // Save any unsaved time before resetting
+                saveNewStopwatchSession();
+                // Reset everything
                 stopwatchElapsed = 0;
                 stopwatchStartTime = null;
+                stopwatchLastSavedElapsed = 0;
                 lapTimes = [];
                 updateStopwatchDisplay();
                 btnStartStop.textContent = '▶ Start';
@@ -1379,9 +1413,7 @@ body{
 
             function addLap() {
                 if (!stopwatchRunning && stopwatchElapsed === 0) return;
-                const currentMs = stopwatchRunning ?
-                    stopwatchElapsed + (Date.now() - stopwatchStartTime) :
-                    stopwatchElapsed;
+                const currentMs = getCurrentElapsedMs();
                 lapTimes.push(currentMs);
                 renderLapTimes();
                 showToast('🏁 Lap ' + lapTimes.length + ' recorded');
@@ -1423,38 +1455,6 @@ body{
                 updateStats();
                 renderHistory();
             }
-
-            // Auto-save session when stopping (if elapsed > 2 seconds)
-            function autoSaveOnStop() {
-                if (stopwatchElapsed > 2000 || (stopwatchRunning && (Date.now() - stopwatchStartTime) >
-                    2000)) {
-                    const finalElapsed = stopwatchElapsed + (stopwatchRunning ? (Date.now() - stopwatchStartTime) :
-                        0);
-                    saveSession(finalElapsed, 'stopwatch');
-                }
-            }
-
-            // Override start/stop to auto-save
-            const originalStartStop = startStopwatch;
-            startStopwatch = function() {
-                if (stopwatchRunning) {
-                    // About to pause - save the session
-                    autoSaveOnStop();
-                }
-                originalStartStop();
-                if (!stopwatchRunning && stopwatchElapsed === 0 && lapTimes.length === 0) {
-                    // Just paused, keep elapsed for display but it's saved
-                }
-            };
-
-            // Override reset
-            const originalReset = resetStopwatch;
-            resetStopwatch = function() {
-                if (stopwatchRunning || stopwatchElapsed > 1000) {
-                    autoSaveOnStop();
-                }
-                originalReset();
-            };
 
             // ──────────────────────────────────────
             // Button Events
@@ -2097,10 +2097,17 @@ body{
             // Before unload - save running session
             // ──────────────────────────────────────
             window.addEventListener('beforeunload', () => {
+                // Save stopwatch time
                 if (stopwatchRunning && (Date.now() - stopwatchStartTime) > 2000) {
-                    const finalElapsed = stopwatchElapsed + (Date.now() - stopwatchStartTime);
-                    saveSession(finalElapsed, 'stopwatch');
+                    stopwatchElapsed += Date.now() - stopwatchStartTime;
+                    stopwatchRunning = false;
+                    if (stopwatchAnimFrame) {
+                        cancelAnimationFrame(stopwatchAnimFrame);
+                        stopwatchAnimFrame = null;
+                    }
+                    saveNewStopwatchSession();
                 }
+                // Save pomodoro time
                 if (pomodoroRunning && pomodoroRemainingSeconds < pomodoroTotalSeconds) {
                     const studied = pomodoroTotalSeconds - pomodoroRemainingSeconds;
                     if (studied > 30) {
@@ -2115,10 +2122,11 @@ body{
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden) {
                     if (stopwatchRunning && (Date.now() - stopwatchStartTime) > 2000) {
-                        const finalElapsed = stopwatchElapsed + (Date.now() - stopwatchStartTime);
-                        saveSession(finalElapsed, 'stopwatch');
-                        // Reset the stopwatch start time so we don't double-count
-                        stopwatchElapsed = finalElapsed;
+                        // Freeze current time
+                        stopwatchElapsed += Date.now() - stopwatchStartTime;
+                        // Save the new portion
+                        saveNewStopwatchSession();
+                        // Reset start time so elapsed stays frozen while hidden
                         stopwatchStartTime = Date.now();
                     }
                 }
@@ -2132,6 +2140,8 @@ body{
             console.log('  🍅 Try the Pomodoro timer for focused study sessions');
             console.log('  📒 Use Notes for quick study notes');
             console.log('  🌓 Click the moon/sun icon to switch themes');
+            console.log('  🔧 FIXED: No more jittering (RAF-based animation)');
+            console.log('  🔧 FIXED: No more double-counting time on stop/start');
         })();
     </script>
 </body>
