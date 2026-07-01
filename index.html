@@ -1943,63 +1943,63 @@ body{
             }
 
             function startPomodoro() {
-                if (pomodoroRunning) {
-                    // Pause
-                    pomodoroRunning = false;
-                    clearInterval(pomodoroInterval);
-                    pomodoroInterval = null;
-                    btnPomodoroStart.textContent = '▶ Start Pomodoro';
-                    btnPomodoroStart.classList.remove('running');
-                    showToast('⏸ Pomodoro paused');
-                } else {
-                    // Start
-                    if (pomodoroRemainingSeconds <= 0) {
-                        pomodoroRemainingSeconds = pomodoroTotalSeconds;
-                        updatePomodoroDisplay();
-                    }
-                    pomodoroRunning = true;
-                    pomodoroInterval = setInterval(() => {
-                        pomodoroRemainingSeconds--;
-                        updatePomodoroDisplay();
-                        if (pomodoroRemainingSeconds <= 0) {
-                            stopPomodoro(true);
-                            showToast('🔔 Time\'s up! Take a break or start another session.');
-                            // Save session
-                            saveSession(pomodoroTotalSeconds * 1000, 'pomodoro');
-                            updateStats();
-                            renderHistory();
-                            // Brief flash
-                            pomodoroRing.style.boxShadow = '0 0 40px var(--amber)';
-                            setTimeout(() => {
-                                pomodoroRing.style.boxShadow = '';
-                            }, 1500);
-                        }
-                    }, 1000);
-                    btnPomodoroStart.textContent = '⏸ Pause';
-                    btnPomodoroStart.classList.add('running');
-                    showToast('🍅 Pomodoro started - ' + (pomodoroIsBreak ? 'Break time!' : 'Focus! 📚'));
-                }
-            }
-
-            function stopPomodoro(completed) {
+            if (pomodoroRunning) {
+                // Pause
                 pomodoroRunning = false;
                 clearInterval(pomodoroInterval);
                 pomodoroInterval = null;
-                if (!completed && pomodoroRemainingSeconds < pomodoroTotalSeconds && pomodoroRemainingSeconds > 0) {
-                    // Partial session
-                    const studied = pomodoroTotalSeconds - pomodoroRemainingSeconds;
-                    if (studied > 30) {
-                        saveSession(studied * 1000, 'pomodoro');
-                        updateStats();
-                        renderHistory();
-                    }
-                }
-                pomodoroRemainingSeconds = pomodoroTotalSeconds;
-                updatePomodoroDisplay();
                 btnPomodoroStart.textContent = '▶ Start Pomodoro';
                 btnPomodoroStart.classList.remove('running');
+                showToast('⏸ Pomodoro paused');
+            } else {
+                // Start
+                if (pomodoroRemainingSeconds <= 0) {
+                    pomodoroRemainingSeconds = pomodoroTotalSeconds;
+                    updatePomodoroDisplay();
+                }
+                pomodoroRunning = true;
+                pomodoroInterval = setInterval(() => {
+                    pomodoroRemainingSeconds--;
+                    updatePomodoroDisplay();
+                    if (pomodoroRemainingSeconds <= 0) {
+                        stopPomodoro(true);
+                        showToast('🔔 Time\'s up! Take a break or start another session.');
+                        // Save session ONLY if it's a focus session (not break)
+                        if (!pomodoroIsBreak) {
+                            saveSession(pomodoroTotalSeconds * 1000, 'pomodoro');
+                            updateStats();
+                            renderHistory();
+                        }
+                        // Brief flash
+                        pomodoroRing.style.boxShadow = '0 0 40px var(--amber)';
+                        setTimeout(() => {
+                            pomodoroRing.style.boxShadow = '';
+                        }, 1500);
+                    }
+                }, 1000);
+                btnPomodoroStart.textContent = '⏸ Pause';
+                btnPomodoroStart.classList.add('running');
+                showToast('🍅 Pomodoro started - ' + (pomodoroIsBreak ? 'Break time!' : 'Focus! 📚'));
             }
-
+        }
+            function stopPomodoro(completed) {
+            pomodoroRunning = false;
+            clearInterval(pomodoroInterval);
+            pomodoroInterval = null;
+            if (!completed && pomodoroRemainingSeconds < pomodoroTotalSeconds && pomodoroRemainingSeconds > 0) {
+                // Partial session – only save if it was a focus session
+                const studied = pomodoroTotalSeconds - pomodoroRemainingSeconds;
+                if (studied > 30 && !pomodoroIsBreak) {
+                    saveSession(studied * 1000, 'pomodoro');
+                    updateStats();
+                    renderHistory();
+                }
+            }
+            pomodoroRemainingSeconds = pomodoroTotalSeconds;
+            updatePomodoroDisplay();
+            btnPomodoroStart.textContent = '▶ Start Pomodoro';
+            btnPomodoroStart.classList.remove('running');
+        }
             function resetPomodoro() {
                 stopPomodoro(false);
                 pomodoroRemainingSeconds = pomodoroTotalSeconds;
@@ -2108,13 +2108,13 @@ body{
                     saveNewStopwatchSession();
                 }
                 // Save pomodoro time
-                if (pomodoroRunning && pomodoroRemainingSeconds < pomodoroTotalSeconds) {
-                    const studied = pomodoroTotalSeconds - pomodoroRemainingSeconds;
-                    if (studied > 30) {
-                        saveSession(studied * 1000, 'pomodoro');
-                    }
+                 if (pomodoroRunning && pomodoroRemainingSeconds < pomodoroTotalSeconds && !pomodoroIsBreak) {
+                const studied = pomodoroTotalSeconds - pomodoroRemainingSeconds;
+                if (studied > 30) {
+                    saveSession(studied * 1000, 'pomodoro');
                 }
-            });
+            }
+        });
 
             // ──────────────────────────────────────
             // Handle visibility change - save on tab hidden
