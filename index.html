@@ -1791,23 +1791,22 @@ body{
                 }
 
                 // Facebook
-                if (!platform) {
-                    const fbRegexes = [
-                        /(?:https?:\/\/)?(?:www\.)?facebook\.com\/.*\/videos\/(\d+)/,
-                        /(?:https?:\/\/)?(?:www\.)?facebook\.com\/watch\/?\?v=(\d+)/,
-                        /(?:https?:\/\/)?fb\.watch\/([a-zA-Z0-9_-]+)/,
-                    ];
-                    for (const regex of fbRegexes) {
-                        const match = url.match(regex);
-                        if (match) {
-                            platform = 'Facebook';
-                            videoId = match[1];
-                            embedUrl = 'https://www.facebook.com/plugins/video.php?href=' + encodeURIComponent(url) +
-                                '&show_text=false&width=560';
-                            thumbnailUrl = null; // Facebook doesn't provide easy thumbnails
-                            break;
-                        }
-                    }
+if (!platform) {
+    if (
+        url.includes("facebook.com") ||
+        url.includes("fb.watch")
+    ) {
+        platform = "Facebook";
+        videoId = Date.now().toString();
+
+        embedUrl =
+            "https://www.facebook.com/plugins/video.php?href=" +
+            encodeURIComponent(url) +
+            "&show_text=false";
+
+        thumbnailUrl = null;
+    }
+}
                 }
 
                 return { platform, videoId, embedUrl, thumbnailUrl, originalUrl: url };
